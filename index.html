@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Interval Timer</title>
+
+<!--
+  ============================================================
+  INTERVAL TIMER - version 1
+  A web page is built from three languages that live in this one file:
+    HTML  = the structure (what is on the page)
+    CSS   = the looks (colors, sizes, layout)
+    JS    = the behavior (what happens when you tap things)
+  Read the comments as you go. Change a number, save, refresh, and see what happens.
+  ============================================================
+-->
+
+<style>
+  /* ---------- CSS ---------- */
+
+  /* Colors live here as named variables, so we can change a look in one place. */
+  :root {
+    --ink: #14161a;        /* dark background */
+    --chalk: #f4f4ef;      /* light text */
+    --block-yellow: #ffd400; /* work phase: the color of starting blocks */
+    --infield: #1e6b52;    /* rest phase: infield grass green */
+    --muted: #8b9099;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    font-family: "Bahnschrift", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+    background: var(--ink);
+    color: var(--chalk);
+    transition: background-color 0.25s, color 0.25s;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  }
+
+  /* JS adds one of these classes to <body> to change the whole screen color. */
+  body.work { background: var(--block-yellow); color: #14161a; }
+  body.rest { background: var(--infield); color: #ffffff; }
+  body.done { background: var(--chalk); color: #14161a; }
+
+  main {
+    max-width: 480px;
+    min-height: 100%;
+    margin: 0 auto;
+    padding: 24px 20px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  h1 { font-size: 1.1rem; font-weight: 600; margin: 0; opacity: 0.8; }
+
+  /* The big readout: the thing you glance at mid-run. */
+  .readout { text-align: center; padding: 8px 0; }
+
+  .phase { font-size: 2rem; font-weight: 700; min-height: 2.4rem; }
+
+  .time {
+    font-size: clamp(6rem, 32vw, 10rem);
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums; /* every digit the same width, so the numbers don't wobble */
+  }
+
+  .round { font-size: 1.4rem; margin-top: 8px; min-height: 1.8rem; }
+
+  /* Progress bar for the current phase */
+  .bar { height: 10px; border-radius: 5px; background: rgba(128,128,128,0.3); overflow: hidden; }
+  .bar > div { height: 100%; width: 0%; background: currentColor; }
+
+  /* Settings */
+  .settings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+  label { display: flex; flex-direction: column; gap: 6px; font-size: 1rem; }
+
+  input {
+    font: inherit;
+    font-size: 1.6rem;
+    font-weight: 600;
+    width: 100%;
+    padding: 10px;
+    border-radius: 10px;
+    border: 2px solid rgba(128,128,128,0.5);
+    background: rgba(255,255,255,0.12);
+    color: inherit;
+    text-align: center;
+  }
+  input:disabled { opacity: 0.5; }
+
+  .total { text-align: center; opacity: 0.8; }
+
+  /* Buttons */
+  .buttons { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-top: auto; }
+
+  button {
+    font: inherit;
+    font-size: 1.5rem;
+    font-weight: 700;
+    padding: 18px;
+    border-radius: 14px;
+    border: 3px solid currentColor;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  button.primary { background: var(--chalk); color: #14161a; border-color: var(--chalk); }
+  body.work button.primary { background: #14161a; color: var(--block-yellow); border-color: #14161a; }
+  body.rest button.primary { background: #ffffff; color: var(--infield); border-color: #ffffff; }
+  body.done button.primary { background: #14161a; color: var(--chalk); border-color: #14161a; }
+
+  button:focus-visible, input:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+</style>
+</head>
+
+<body>
+<!-- ---------- HTML ---------- -->
+<main>
+  <h1>Interval timer</h1>
+
+  <section class="readout" aria-live="polite">
+    <div class="phase" id="phase">Ready</div>
+    <div class="time" id="time">0:30</div>
+    <div class="round" id="round"></div>
+  </section>
+
+  <div class="bar" aria-hidden="true"><div id="progress"></div></div>
+
+  <section class="settings">
+    <label>Work (sec)
+      <input id="workInput" type="number" inputmode="numeric" min="1" value="30">
+    </label>
+    <label>Rest (sec)
+      <input id="restInput" type="number" inputmode="numeric" min="0" value="90">
+    </label>
+    <label>Rounds
+      <input id="roundsInput" type="number" inputmode="numeric" min="1" value="8">
+    </label>
+  </section>
+
+  <div class="total" id="total"></div>
+
+  <section class="buttons">
+    <button class="primary" id="startBtn">Start</button>
+    <button id="resetBtn">Reset</button>
+  </section>
+</main>
+
+<script>
+  // ---------- JavaScript ----------
+
+  // 1) Grab the page elements we need to control. "getElementById" finds an element by its id.
+  const phaseEl = document.getElementById("phase");
+  const timeEl = document.getElementById("time");
+  const roundEl = document.getElementById("round");
+  const progressEl = document.getElementById("progress");
+  const totalEl = document.getElementById("total");
+  const startBtn = document.getElementById("startBtn");
+  const resetBtn = document.getElementById("resetBtn");
+  const workInput = document.getElementById("workInput");
+  const restInput = document.getElementById("restInput");
+  const roundsInput = document.getElementById("roundsInput");
+
+  // 2) The timer's memory. These variables describe where the workout is right now.
+  let phase = "ready";      // "ready", "work", "rest", or "done"
+  let round = 1;            // which round we are on
+  let phaseLengthMs = 0;    // how long the current phase lasts
+  let remainingMs = 0;      // how much of it is left
+  let endTime = 0;          // the clock time when the current phase ends
+  let running = false;      // is the timer ticking?
+  let tickHandle = null;    // lets us stop the repeating tick
+  let lastBeepSecond = -1;  // stops us beeping twice in the same second
+  let wakeLock = null;      // keeps the phone screen on
+
+  // 3) Read the settings the person typed in.
+  function getSettings() {
+    return {
+      work: Math.max(1, Number(workInput.value) || 1),
+      rest: Math.max(0, Number(restInput.value) || 0),
+      rounds: Math.max(1, Number(roundsInput.value) || 1),
+    };
+  }
+
+  // 4) Sound. Browsers only allow sound after a tap, so we create it when Start is pressed.
+  let audioCtx = null;
+  function beep(frequency, durationMs) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = frequency;
+    gain.gain.value = 0.25;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + durationMs / 1000);
+  }
+
+  function buzz(pattern) {
+    if (navigator.vibrate) navigator.vibrate(pattern); // works on most Android phones
+  }
+
+  // 5) Turn milliseconds into a "m:ss" string.
+  function formatTime(ms) {
+    const totalSeconds = Math.ceil(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return minutes + ":" + String(seconds).padStart(2, "0");
+  }
+
+  // 6) Update everything the person sees.
+  function render() {
+    const s = getSettings();
+    document.body.className = phase === "ready" ? "" : phase;
+
+    if (phase === "ready") {
+      phaseEl.textContent = "Ready";
+      timeEl.textContent = formatTime(s.work * 1000);
+      roundEl.textContent = "";
+      progressEl.style.width = "0%";
+    } else if (phase === "done") {
+      phaseEl.textContent = "Done";
+      timeEl.textContent = "0:00";
+      roundEl.textContent = s.rounds + " rounds finished";
+      progressEl.style.width = "100%";
+    } else {
+      phaseEl.textContent = phase === "work" ? "Go" : "Rest";
+      timeEl.textContent = formatTime(remainingMs);
+      roundEl.textContent = "Round " + round + " of " + s.rounds;
+      progressEl.style.width = (1 - remainingMs / phaseLengthMs) * 100 + "%";
+    }
+
+    // Show the total workout length
+    const totalSeconds = s.rounds * s.work + (s.rounds - 1) * s.rest;
+    totalEl.textContent = "Total: " + formatTime(totalSeconds * 1000);
+
+    startBtn.textContent = running ? "Pause" : (phase === "ready" ? "Start" : phase === "done" ? "Again" : "Resume");
+
+    // Lock the settings while a workout is in progress
+    const locked = phase === "work" || phase === "rest";
+    workInput.disabled = restInput.disabled = roundsInput.disabled = locked;
+  }
+
+  // 7) Begin a phase ("work" or "rest").
+  function startPhase(newPhase) {
+    const s = getSettings();
+    phase = newPhase;
+    phaseLengthMs = (newPhase === "work" ? s.work : s.rest) * 1000;
+    remainingMs = phaseLengthMs;
+    endTime = Date.now() + remainingMs;
+    lastBeepSecond = -1;
+    beep(newPhase === "work" ? 880 : 520, 500); // high beep to go, lower beep to rest
+    buzz(newPhase === "work" ? [300] : [150, 100, 150]);
+  }
+
+  // 8) Decide what comes next when a phase ends.
+  function nextPhase() {
+    const s = getSettings();
+    if (phase === "work") {
+      if (round >= s.rounds) { finish(); return; }
+      if (s.rest > 0) { startPhase("rest"); }
+      else { round++; startPhase("work"); }
+    } else if (phase === "rest") {
+      round++;
+      startPhase("work");
+    }
+  }
+
+  function finish() {
+    phase = "done";
+    running = false;
+    clearInterval(tickHandle);
+    beep(880, 200); setTimeout(() => beep(880, 200), 300); setTimeout(() => beep(1175, 600), 600);
+    buzz([200, 100, 200, 100, 400]);
+    releaseWakeLock();
+  }
+
+  // 9) The tick: runs about 10 times a second while the timer is going.
+  // We compare against the real clock (Date.now) instead of counting ticks,
+  // so the timer stays accurate even if the phone is busy.
+  function tick() {
+    remainingMs = endTime - Date.now();
+
+    // Short beeps for the last 3 seconds of a phase
+    const secondsLeft = Math.ceil(remainingMs / 1000);
+    if (secondsLeft <= 3 && secondsLeft > 0 && secondsLeft !== lastBeepSecond) {
+      lastBeepSecond = secondsLeft;
+      beep(660, 120);
+    }
+
+    if (remainingMs <= 0) nextPhase();
+    render();
+  }
+
+  // 10) Keep the screen awake during a workout (not every browser supports this).
+  async function requestWakeLock() {
+    try {
+      if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+    } catch (err) { /* if it fails, the timer still works */ }
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release(); wakeLock = null; }
+  }
+  // The screen lock is released if you switch tabs, so ask for it again when you come back.
+  document.addEventListener("visibilitychange", () => {
+    if (running && document.visibilityState === "visible") requestWakeLock();
+  });
+
+  // 11) Button actions
+  startBtn.addEventListener("click", () => {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+
+    if (running) {
+      // Pause: remember how much time is left and stop ticking
+      running = false;
+      clearInterval(tickHandle);
+      remainingMs = endTime - Date.now();
+      releaseWakeLock();
+    } else {
+      if (phase === "ready" || phase === "done") {
+        round = 1;
+        startPhase("work");
+      } else {
+        // Resume: set a new end time based on what was left
+        endTime = Date.now() + remainingMs;
+      }
+      running = true;
+      tickHandle = setInterval(tick, 100);
+      requestWakeLock();
+    }
+    render();
+  });
+
+  resetBtn.addEventListener("click", () => {
+    running = false;
+    clearInterval(tickHandle);
+    releaseWakeLock();
+    phase = "ready";
+    round = 1;
+    render();
+  });
+
+  // Update the preview whenever a setting changes
+  [workInput, restInput, roundsInput].forEach(input => input.addEventListener("input", render));
+
+  // Draw the page for the first time
+  render();
+</script>
+</body>
+</html>
