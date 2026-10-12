@@ -223,6 +223,17 @@
     osc.stop(audioCtx.currentTime + durationMs / 1000);
   }
 
+  // Voice. The browser can read text aloud with its built-in speech tool.
+  function speak(text) {
+    try {
+      if (!("speechSynthesis" in window)) return; // some browsers have no voice support
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;     // speed: 1 is normal
+      utterance.volume = 1;   // loudness: 0 to 1
+      window.speechSynthesis.speak(utterance);
+    } catch (err) { /* if speech fails, the beeps still work */ }
+  }
+
   function buzz(pattern) {
     if (navigator.vibrate) navigator.vibrate(pattern); // works on most Android phones
   }
@@ -279,6 +290,17 @@
     lastBeepSecond = -1;
     beep(newPhase === "work" ? 880 : 520, 500); // high beep to go, lower beep to rest
     buzz(newPhase === "work" ? [300] : [150, 100, 150]);
+
+    // Say what is happening, a moment after the beep so they don't overlap
+    let message;
+    if (newPhase === "rest") {
+      message = "Rest";
+    } else if (round === s.rounds && s.rounds > 1) {
+      message = "Last round. Go";
+    } else {
+      message = "Round " + round + ". Go";
+    }
+    setTimeout(() => speak(message), 600);
   }
 
   // 8) Decide what comes next when a phase ends.
@@ -300,6 +322,7 @@
     clearInterval(tickHandle);
     beep(880, 200); setTimeout(() => beep(880, 200), 300); setTimeout(() => beep(1175, 600), 600);
     buzz([200, 100, 200, 100, 400]);
+    setTimeout(() => speak("Well done"), 1300); // wait for the beeps to finish first
     releaseWakeLock();
   }
 
@@ -338,6 +361,7 @@
   startBtn.addEventListener("click", () => {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === "suspended") audioCtx.resume();
+    if ("speechSynthesis" in window) window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); // silent, just unlocks voice
 
     if (running) {
       // Pause: remember how much time is left and stop ticking
