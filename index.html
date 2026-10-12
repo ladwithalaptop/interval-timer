@@ -7,7 +7,7 @@
 
 <!--
   ============================================================
-  INTERVAL TIMER - version 1
+  INTERVAL TIMER - version 2 (adds saved workouts)
   A web page is built from three languages that live in this one file:
     HTML  = the structure (what is on the page)
     CSS   = the looks (colors, sizes, layout)
@@ -115,6 +115,19 @@
   body.rest button.primary { background: #ffffff; color: var(--infield); border-color: #ffffff; }
   body.done button.primary { background: #14161a; color: var(--chalk); border-color: #14161a; }
 
+  /* Saved workouts (new in version 2) */
+  h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 10px; opacity: 0.8; }
+  .preset-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .preset { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+  .preset button { font-size: 1.1rem; padding: 12px 14px; border-width: 2px; border-radius: 10px; text-align: left; }
+  .preset .summary { display: block; font-size: 0.95rem; font-weight: 400; opacity: 0.8; }
+  .preset .del { padding: 12px 16px; text-align: center; }
+  .save-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+  .save-row input { font-size: 1.1rem; font-weight: 400; text-align: left; }
+  .save-row button { font-size: 1.1rem; padding: 12px 18px; border-width: 2px; border-radius: 10px; }
+  .empty { opacity: 0.7; margin: 0 0 12px; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
   button:focus-visible, input:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
 </style>
 </head>
@@ -145,6 +158,15 @@
   </section>
 
   <div class="total" id="total"></div>
+
+  <section class="presets">
+    <h2>Saved workouts</h2>
+    <div id="presetList" class="preset-list"></div>
+    <div class="save-row">
+      <input id="presetName" type="text" placeholder="Name this workout" maxlength="30">
+      <button id="saveBtn">Save</button>
+    </div>
+  </section>
 
   <section class="buttons">
     <button class="primary" id="startBtn">Start</button>
@@ -244,6 +266,7 @@
     // Lock the settings while a workout is in progress
     const locked = phase === "work" || phase === "rest";
     workInput.disabled = restInput.disabled = roundsInput.disabled = locked;
+    document.querySelectorAll(".preset button, #saveBtn, #presetName").forEach(el => el.disabled = locked);
   }
 
   // 7) Begin a phase ("work" or "rest").
@@ -349,7 +372,108 @@
   // Update the preview whenever a setting changes
   [workInput, restInput, roundsInput].forEach(input => input.addEventListener("input", render));
 
+  // ---------- Saved workouts (new in version 2) ----------
+  // The browser has a small storage area called localStorage. It keeps text
+  // on this device even after you close the page. We store our list of workouts there.
+  // It can only hold text, so JSON.stringify turns our list into text,
+  // and JSON.parse turns the text back into a list.
+  const PRESETS_KEY = "intervalTimerPresets";
+  const presetListEl = document.getElementById("presetList");
+  const presetNameInput = document.getElementById("presetName");
+  const saveBtn = document.getElementById("saveBtn");
+
+  function loadPresets() {
+    try {
+      const saved = localStorage.getItem(PRESETS_KEY);
+      if (saved === null) {
+        // First visit: start with two examples so the list isn't empty
+        return [
+          { name: "Sprints", work: 30, rest: 90, rounds: 10 },
+          { name: "Short intervals", work: 60, rest: 60, rounds: 8 },
+        ];
+      }
+      return JSON.parse(saved);
+    } catch (err) {
+      return []; // if storage is blocked or broken, start with an empty list
+    }
+  }
+
+  function savePresets() {
+    try {
+      localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+    } catch (err) { /* if saving fails, the timer still works */ }
+  }
+
+  let presets = loadPresets();
+
+  // Draw the list of saved workouts on the page
+  function renderPresets() {
+    presetListEl.innerHTML = "";
+
+    if (presets.length === 0) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = "Nothing saved yet. Set up a workout above and save it.";
+      presetListEl.appendChild(p);
+      return;
+    }
+
+    presets.forEach((preset, index) => {
+      const row = document.createElement("div");
+      row.className = "preset";
+
+      // Button that loads this workout into the settings
+      const loadBtn = document.createElement("button");
+      const name = document.createElement("span");
+      name.textContent = preset.name;
+      const summary = document.createElement("span");
+      summary.className = "summary";
+      summary.textContent = preset.rounds + " rounds: " + preset.work + "s work, " + preset.rest + "s rest";
+      loadBtn.appendChild(name);
+      loadBtn.appendChild(summary);
+      loadBtn.addEventListener("click", () => {
+        workInput.value = preset.work;
+        restInput.value = preset.rest;
+        roundsInput.value = preset.rounds;
+        render();
+      });
+
+      // Button that deletes this workout
+      const delBtn = document.createElement("button");
+      delBtn.className = "del";
+      delBtn.textContent = "Delete";
+      delBtn.setAttribute("aria-label", "Delete " + preset.name);
+      delBtn.addEventListener("click", () => {
+        presets.splice(index, 1); // remove this one item from the list
+        savePresets();
+        renderPresets();
+      });
+
+      row.appendChild(loadBtn);
+      row.appendChild(delBtn);
+      presetListEl.appendChild(row);
+    });
+    render(); // refresh so the new buttons follow the locked/unlocked state
+  }
+
+  // Save whatever is currently typed into the settings
+  saveBtn.addEventListener("click", () => {
+    const s = getSettings();
+    const name = presetNameInput.value.trim() || (s.rounds + " x " + s.work + "s");
+    const newPreset = { name: name, work: s.work, rest: s.rest, rounds: s.rounds };
+
+    // If a workout with this name already exists, replace it instead of adding a duplicate
+    const existing = presets.findIndex(p => p.name.toLowerCase() === name.toLowerCase());
+    if (existing >= 0) presets[existing] = newPreset;
+    else presets.push(newPreset);
+
+    savePresets();
+    presetNameInput.value = "";
+    renderPresets();
+  });
+
   // Draw the page for the first time
+  renderPresets();
   render();
 </script>
 </body>
