@@ -23,8 +23,8 @@
   :root {
     --ink: #14161a;        /* dark background */
     --chalk: #f4f4ef;      /* light text */
-    --block-yellow: #ffd400; /* work phase: the color of starting blocks */
-    --infield: #1e6b52;    /* rest phase: infield grass green */
+    --work-blue: #1d4ed8;  /* work phase: blue */
+    --infield: #0f4a35;    /* rest phase: dark green */
     --muted: #8b9099;
   }
 
@@ -41,7 +41,7 @@
   }
 
   /* JS adds one of these classes to <body> to change the whole screen color. */
-  body.work { background: var(--block-yellow); color: #14161a; }
+  body.work { background: var(--work-blue); color: #ffffff; }
   body.rest { background: var(--infield); color: #ffffff; }
   body.done { background: var(--chalk); color: #14161a; }
 
@@ -111,7 +111,7 @@
     cursor: pointer;
   }
   button.primary { background: var(--chalk); color: #14161a; border-color: var(--chalk); }
-  body.work button.primary { background: #14161a; color: var(--block-yellow); border-color: #14161a; }
+  body.work button.primary { background: #ffffff; color: var(--work-blue); border-color: #ffffff; }
   body.rest button.primary { background: #ffffff; color: var(--infield); border-color: #ffffff; }
   body.done button.primary { background: #14161a; color: var(--chalk); border-color: #14161a; }
 
